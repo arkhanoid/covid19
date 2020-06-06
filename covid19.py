@@ -10,8 +10,11 @@ def proggeom(t, t0, R):
     return np.exp(R * (t-t0) )
 
 
-pop = 211394901
-i0 = 67446.0
+pop = 211524206
+i0 = 614941.0
+dunbar = 128.0 
+
+
 p0 = np.array([-10.0, 1.0]) # t0 R iniciais
 p, _ = scipy.optimize.curve_fit(proggeom, df['Dias'], df['casos'], p0=p0)
 
@@ -19,7 +22,7 @@ def model(y,t,a,b):
     dydt = -b * y * ( 1-y+ a*np.log(y)/b )
     return dydt
 
-y0 = 1.0-i0/(pop*0.078) # fracao inicial 1 - n de casos / populacao * taxa notificacao
+y0 = 1.0-i0/(pop*0.1266) # fracao inicial 1 - n de casos / populacao * taxa notificacao
 
 t = np.linspace(0, 200, 200);
 
@@ -43,36 +46,13 @@ t = np.linspace(0, 200, 200);
 # usando a media dos ultimos dias
 
 #a = p[1] / ( 33682.0 / 16398 - 1 )
-a = p[1] / 0.78595297588584 
+a = p[1] / 1.12888982203603
+ 
+ 
 
+#a = 1.0/14
 
 b = p[1] + a
-
-
-y1 = odeint(model, y0, t, args=(a,b,))
-y2 = [ 1-y+a*np.log(y)/b for y in y1] 
-y3 = [ 1 - y - (1-y+a*np.log(y)/b)  for y in y1]
-y4 = [ a/b for y in y1]
-
-i=0 
-for y in y1: 
-    i=i+1
-    if y < a/b:
-        break;
-
-plt.plot(t, y1, 'r-', linewidth=2, label='susceptibles')
-plt.plot(t, y2, 'g--', linewidth=2, label='infected')
-plt.plot(t, y3, 'b--', linewidth=2, label='removed')
-plt.plot(t, y4, 'r--', linewidth=1, label='A/B')
-
-plt.xlabel('time')
-plt.ylabel('fracao da populacao')
-plt.legend()
-#plt.yscale('log')
-import re
-
-def pts(v):
-    return re.sub("(\d)(?=(\d{3})+(?!\d))", r"\1.", "%d" % v)
 
 def letalidade():
 #taxas de mortalidadde de covid19 por idadade na china
@@ -84,22 +64,66 @@ def letalidade():
     m = 0;
 # media ponderada considerando que a mortalidade masculina eh 2/3 e a feminina 1/3
     for x in range(len(death)):  
-        m = m + (2*apm[x] + apf[x]) * death[x] / (300 * 99.6);
+        m = m + (2*apm[x] + apf[x]) * death[x] / (150 * 99.6);
 
     return m
 
+l = letalidade()
+
+
+#suscetiveis
+y1 = odeint(model, y0, t, args=(a,b,))
+#infectados
+y2 = [ 1-y+a*np.log(y)/b for y in y1] 
+#removidos
+y3 = [ 1 - y - (1-y+a*np.log(y)/b)  for y in y1]
+#S= a/b => pico
+y4 = [ a/b for y in y1]
+#contatantes
+y5 = [ 1-np.exp(-y*l*dunbar) for y in y3]
+
+
+i=0 
+for y in y1: 
+    i=i+1
+    if y < a/b:
+        break;
+
+plt.plot(t, y1, 'r-', linewidth=2, label='susceptibles')
+plt.plot(t, y2, 'g--', linewidth=2, label='infected')
+plt.plot(t, y3, 'b--', linewidth=2, label='removed')
+plt.plot(t, y4, 'r--', linewidth=1, label='A/B')
+plt.plot(t, y5, 'b', linewidth=2, label='em luto')
+
+
+
+plt.xlabel('time')
+plt.ylabel('fracao da populacao')
+plt.legend()
+#plt.yscale('log')
+import re
+
+def pts(v):
+    return re.sub("(\d)(?=(\d{3})+(?!\d))", r"\1.", "%d" % v)
+
 from datetime import date, timedelta
 print   "Populacao: %s\n"\
-        "Max doentes: %s\n"\
+        "Max doentes: %s (%.2f%%)\n"\
         "Contrairao virus %s (%.2f%%)\n"\
-        "Numero de mortos: %s\n"\
+        "Numero de mortos: %s (%.2f%%)\n"\
+        "Letalidade: %.2f %%\n"\
+        "Contatatntes proximos mortos %.2f %%\n"\
         "Pico da epidemia %s\n"\
         "Razao de reproducao (R0): %.3f\n"\
         "Tempo medio de recuperacao: %.2f" % (
                 pts(pop),  
-                pts(np.int(pop * (1-a/b+ a* np.log(a/b) / b) )), 
+                pts(np.int(pop * (1-a/b+ a* np.log(a/b) / b) )),
+                (1-a/b+ a* np.log(a/b) / b) * 100,
                 pts(np.int (pop* y3.pop()[0] )), y3.pop()[0] * 100,
-                pts(np.int (pop* y3.pop()[0] * letalidade())), 
+                pts(np.int (pop* y3.pop()[0] * letalidade())),
+                y3.pop()[0] * letalidade() * 100, 
+                letalidade() * 100,
+                100*(1 - np.exp(-y3.pop()*l*dunbar)), 
                 (date.today()+timedelta(i)).strftime('%d/%m/%Y')  , 
                 b/a, 1/a) 
 
